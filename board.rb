@@ -1,4 +1,4 @@
-require './piece'
+require './pieces'
 require 'colorize'
 
 class Board
@@ -22,11 +22,11 @@ class Board
     @board[pos.rank][pos.file] = piece
   end 
   
-  def to_s(flipped = false)
-    board = flipped ? @board : @board.reverse
+  def to_s(player = :white)
+    board = player == :white ? @board.reverse : @board
     
     board.each_with_index.map do |row, rank|
-      row_str = flipped ? "#{rank + 1} " : "#{8 - rank} "
+      row_str = player == :white ? "#{8 - rank} " : "#{rank + 1} "
       
       tiles = row.each_with_index.map do |tile, file|
         character = tile.to_s + ' '
@@ -42,7 +42,13 @@ class Board
     end.join("").concat('  ' + ('a'..'h').to_a.join(' '))
   end
   
-  def move(start_pos, end_pos)
+  def move(color, start_pos, end_pos)
+    
+    if self[start_pos].color != color
+      raise InvalidMoveError.new(
+        "Piece at #{ start.pgn } does not belong to #{ @color }.")
+    end
+    
     piece = self[start_pos]
     
     if piece.nil?
@@ -53,11 +59,30 @@ class Board
         "Piece at #{ start_pos.pgn } can't move to #{ end_pos.pgn }.")
     end
     
+    reset_in_passing
+    
     piece.move(end_pos)
   end
   
+  def reset_in_passing
+    pieces.each do |piece|
+      piece.in_passing = false if piece.is_a? Pawn
+    end
+  end
+  
+  def promoting?(color)
+    pawn = pieces_by_type(Pawn, color).any? { |p| p.promoting? }
+  end
+  
+  def promote(color, promotion)
+    pawn = pieces_by_type(Pawn, color).find { |p| p.promoting? }
+    
+    self[pawn.position] = nil
+    self[pawn.position] = promotion.new(color, pawn.position, self)
+  end
+  
   def in_check?(color)
-    king = pieces_by_color(color).select { |p| p.is_a? King }.first
+    king = pieces_by_type(King, color).first
     
     opponents_for_color(color).any? do |opponent|
       opponent.moves.include? king.position
@@ -99,6 +124,26 @@ class Board
     duped
   end
   
+  def pieces_by_type(type, color)
+    pieces_by_color(color).select { |p| p.is_a?(type) }
+  end
+  
+  def pieces_by_color(color)
+    pieces.select { |p| p.color == color }
+  end
+  
+  def pieces
+    @board.flatten.compact
+  end
+  
+  def opponents_for_color(color)
+    pieces_by_color(opposing_color(color))
+  end
+  
+  def opposing_color(color)
+    color == :white ? :black : :white
+  end
+  
   private
   
   def set_pieces
@@ -116,21 +161,7 @@ class Board
   end  
   
   def white_tile? pos
-    rank = pos.rank
-    file = pos.file
-    (rank % 2 == 0 && file % 2 == 0) || (rank % 2 == 1 && file % 2 == 1)
-  end
-  
-  def pieces_by_color(color)
-    @board.flatten.compact.select { |p| p.color == color }
-  end
-  
-  def opponents_for_color(color)
-    pieces_by_color(opposing_color(color))
-  end
-  
-  def opposing_color(color)
-    color == :white ? :black : :white
+    pos.rank % 2 == pos.file % 2 
   end
 end
 
